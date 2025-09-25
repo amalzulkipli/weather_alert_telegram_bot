@@ -2,9 +2,63 @@ import requests
 import datetime
 import os
 import argparse
+import logging
+import logging.handlers
 from dotenv import load_dotenv
 from collections import defaultdict
 load_dotenv()
+
+# === LOGGING SETUP ===
+def setup_logging():
+    """Setup professional logging system for production deployment"""
+    
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Create logger
+    logger = logging.getLogger('weather_bot')
+    logger.setLevel(logging.INFO)
+    
+    # Prevent duplicate handlers
+    if logger.handlers:
+        return logger
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)-5s | %(name)-12s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # File handler with rotation (max 10MB, keep 5 files)
+    file_handler = logging.handlers.RotatingFileHandler(
+        'logs/weather_bot.log',
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    
+    # Console handler for critical errors only
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.ERROR)
+    console_handler.setFormatter(formatter)
+    
+    # Add handlers
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+# Initialize logging
+logger = setup_logging()
+
+# Component-specific loggers
+met_logger = logging.getLogger('weather_bot.met-api')
+weather_logger = logging.getLogger('weather_bot.weather-api')
+openweather_logger = logging.getLogger('weather_bot.openweather')
+telegram_logger = logging.getLogger('weather_bot.telegram')
+main_logger = logging.getLogger('weather_bot.main')
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Hybrid Weather Bot: MET Malaysia + WeatherAPI.com')
@@ -19,8 +73,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID") 
 LAT, LON = float(os.getenv("LAT")), float(os.getenv("LON"))
 
-print(f"Mode: {args.mode}")
-print(f"Coordinates: {LAT}, {LON}")
+main_logger.info(f"Starting {args.mode} mode (coordinates: {LAT}, {LON})")
 
 class METMalaysiaAPI:
     """Handler for MET Malaysia API - for daily forecasts"""
@@ -45,9 +98,10 @@ class METMalaysiaAPI:
             url = f"{self.base_url}?contains=Sepang@location__location_name"
             response = requests.get(url)
             response.raise_for_status()
+            met_logger.info(f"MET Malaysia API request successful ({response.status_code})")
             return response.json()
         except Exception as e:
-            print(f"MET Malaysia API error: {e}")
+            met_logger.error(f"MET Malaysia API failed: {e}")
             return []
     
     def parse_daily_rain(self, data):
@@ -72,9 +126,10 @@ class METMalaysiaAPI:
                     break
         
         if not selected_location:
+            met_logger.warning("No Sepang location found in MET Malaysia data")
             return rain_by_date, today, tomorrow, "No location found"
         
-        print(f"Using: {selected_location['location']['location_name']} ({selected_location['location']['location_id']})")
+        met_logger.info(f"Using location: {selected_location['location']['location_name']} ({selected_location['location']['location_id']})")
         
         # Process forecasts for selected location only
         for item in data:
@@ -127,9 +182,10 @@ class WeatherAPIClient:
             url = f"{self.base_url}/forecast.json?key={self.api_key}&q={LAT},{LON}&hours=6&aqi=no"
             response = requests.get(url)
             response.raise_for_status()
+            weather_logger.info(f"WeatherAPI request successful ({response.status_code})")
             return response.json()
         except Exception as e:
-            print(f"WeatherAPI error: {e}")
+            weather_logger.error(f"WeatherAPI failed: {e}")
             return None
     
     def parse_30min_alerts(self, data):
@@ -187,9 +243,10 @@ class OpenWeatherFallback:
             url = f"{self.base_url}/forecast?lat={LAT}&lon={LON}&appid={self.api_key}&units=metric"
             response = requests.get(url)
             response.raise_for_status()
+            openweather_logger.info(f"OpenWeather forecast API successful ({response.status_code})")
             return response.json()
         except Exception as e:
-            print(f"OpenWeatherMap API error: {e}")
+            openweather_logger.error(f"OpenWeather forecast API failed: {e}")
             return None
     
     def get_current_weather(self):
@@ -198,9 +255,10 @@ class OpenWeatherFallback:
             url = f"{self.base_url}/weather?lat={LAT}&lon={LON}&appid={self.api_key}&units=metric"
             response = requests.get(url)
             response.raise_for_status()
+            openweather_logger.info(f"OpenWeather current API successful ({response.status_code})")
             return response.json()
         except Exception as e:
-            print(f"OpenWeatherMap current API error: {e}")
+            openweather_logger.error(f"OpenWeather current API failed: {e}")
             return None
     
     def parse_daily_rain_fallback(self, data):
@@ -277,12 +335,17 @@ def send_telegram_message(message):
         "text": message,
         "parse_mode": "Markdown"
     })
-    print(f"Telegram response: {tg_response.status_code}")
+    
+    if tg_response.status_code == 200:
+        telegram_logger.info("Message sent successfully")
+    else:
+        telegram_logger.error(f"Message failed to send (HTTP {tg_response.status_code})")
+    
     return tg_response
 
 # === Main execution based on mode ===
 if args.mode == 'daily':
-    print("🏛️ Using MET Malaysia API for daily forecast...")
+    main_logger.info("Starting daily forecast mode using MET Malaysia API")
     
     met_api = METMalaysiaAPI()
     data = met_api.get_sepang_forecast()
@@ -299,8 +362,10 @@ if args.mode == 'daily':
             msg_parts.append("Expected rain at:")
             for forecast in rain_by_date[today]:
                 msg_parts.append(f"  • {forecast['time']} - {forecast['description']} {forecast['icon']}")
+            main_logger.info(f"Rain forecast found for today: {len(rain_by_date[today])} periods")
         else:
             msg_parts.append("No rain predicted")
+            main_logger.info("No rain predicted for today")
         
         # Tomorrow section
         msg_parts.append(f"\n*Tomorrow* *({tomorrow.strftime('%Y-%m-%d')})*")
@@ -308,18 +373,20 @@ if args.mode == 'daily':
             msg_parts.append("Expected rain at:")
             for forecast in rain_by_date[tomorrow]:
                 msg_parts.append(f"  • {forecast['time']} - {forecast['description']} {forecast['icon']}")
+            main_logger.info(f"Rain forecast found for tomorrow: {len(rain_by_date[tomorrow])} periods")
         else:
             msg_parts.append("No rain predicted")
+            main_logger.info("No rain predicted for tomorrow")
         
         msg = "\n".join(msg_parts)
         send_telegram_message(msg)
-        print("Daily rain report sent via Telegram!")
+        main_logger.info("Daily report completed successfully")
     else:
         # Fallback to OpenWeatherMap
-        print("⚠️ MET Malaysia failed, trying OpenWeatherMap fallback...")
+        main_logger.warning("MET Malaysia API failed, attempting OpenWeatherMap fallback")
         
         if not OPENWEATHER_API_KEY:
-            print("❌ OPENWEATHER_API_KEY not found in environment variables.")
+            main_logger.error("OpenWeatherMap API key not configured")
             msg = "❌ Unable to fetch weather data. Both primary and fallback APIs are unavailable."
             send_telegram_message(msg)
         else:
@@ -338,8 +405,10 @@ if args.mode == 'daily':
                     msg_parts.append("Expected rain at:")
                     for forecast in rain_by_date[today]:
                         msg_parts.append(f"  • {forecast['time']} - {forecast['description']} {forecast['icon']}")
+                    main_logger.info(f"Fallback: Rain forecast found for today: {len(rain_by_date[today])} periods")
                 else:
                     msg_parts.append("No rain predicted")
+                    main_logger.info("Fallback: No rain predicted for today")
                 
                 # Tomorrow section
                 msg_parts.append(f"\n*Tomorrow* *({tomorrow.strftime('%Y-%m-%d')})*")
@@ -347,22 +416,24 @@ if args.mode == 'daily':
                     msg_parts.append("Expected rain at:")
                     for forecast in rain_by_date[tomorrow]:
                         msg_parts.append(f"  • {forecast['time']} - {forecast['description']} {forecast['icon']}")
+                    main_logger.info(f"Fallback: Rain forecast found for tomorrow: {len(rain_by_date[tomorrow])} periods")
                 else:
                     msg_parts.append("No rain predicted")
+                    main_logger.info("Fallback: No rain predicted for tomorrow")
                 
                 msg = "\n".join(msg_parts)
                 send_telegram_message(msg)
-                print("Daily rain report sent via Telegram (OpenWeatherMap fallback)!")
+                main_logger.info("Daily report completed using OpenWeatherMap fallback")
             else:
+                main_logger.error("Both MET Malaysia and OpenWeatherMap APIs failed")
                 msg = "❌ Unable to fetch weather data. Both primary and fallback APIs failed."
                 send_telegram_message(msg)
-                print("Both MET Malaysia and OpenWeatherMap failed.")
 
 elif args.mode == 'alert':
-    print("🌐 Using WeatherAPI.com for 30-minute alerts...")
+    main_logger.info("Starting alert mode using WeatherAPI.com")
     
     if not WEATHERAPI_KEY:
-        print("❌ WEATHERAPI_KEY not found in environment variables.")
+        main_logger.error("WeatherAPI key not configured")
         exit(1)
     
     weather_api = WeatherAPIClient(WEATHERAPI_KEY)
@@ -383,9 +454,9 @@ elif args.mode == 'alert':
             msg = f"🚨 Immediate Rain Alert!\nRain expected in the next 30 minutes | {combined_description}"
             
             send_telegram_message(msg)
-            print("30-minute rain alert sent via Telegram!")
+            main_logger.info(f"30-minute rain alert sent ({len(rain_alerts)} alerts)")
         else:
-            print("No rain expected in the next 30 minutes.")
+            main_logger.info("No rain expected in next 30 minutes")
     else:
         # Fallback to OpenWeatherMap
         print("⚠️ WeatherAPI failed, trying OpenWeatherMap fallback...")
@@ -412,12 +483,12 @@ elif args.mode == 'alert':
                     msg = f"� Current Weather Alert!\nRain conditions detected | {combined_description}"
                     
                     send_telegram_message(msg)
-                    print("Weather alert sent via Telegram (OpenWeatherMap fallback)!")
+                    main_logger.info(f"Weather alert sent using OpenWeatherMap fallback ({len(rain_alerts)} alerts)")
                 else:
-                    print("No immediate rain detected (fallback check).")
+                    main_logger.info("Fallback: No immediate rain detected")
             else:
+                main_logger.error("Both WeatherAPI and OpenWeatherMap APIs failed")
                 msg = "❌ Unable to fetch weather alert data. Both primary and fallback APIs failed."
                 send_telegram_message(msg)
-                print("Both WeatherAPI and OpenWeatherMap failed.")
 
-print(f"Weather check completed in {args.mode} mode.")
+main_logger.info(f"Weather check completed in {args.mode} mode")

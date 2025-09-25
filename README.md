@@ -1,4 +1,13 @@
-# Weather Alert Telegram Bot
+# We## Features
+
+- 🏛️ **Dual Mode Operation**: Daily reports and 30-minute alerts
+- 🌧️ **Hybrid API Architecture**: Uses multiple weather services for optimal accuracy
+- 📱 **Smart Telegram Notifications**: Markdown-formatted messages with weather emojis
+- 🇲🇾 **Malaysia-Optimized**: Official MET Malaysia data for local accuracy
+- 🔄 **Automatic Fallbacks**: OpenWeatherMap backup when primary APIs fail
+- 📍 **Location-Specific**: Precisely targeted for Sepang/Salak Tinggi area
+- ⏰ **Cron-Ready**: Designed for automated scheduling
+- 📝 **Professional Logging**: Structured logs with rotation and component trackingrt Telegram Bot
 
 A Python bot that monitors weather forecasts and sends Telegram notifications when rain is expected in your area. Features a hybrid architecture with multiple weather APIs and intelligent fallbacks for maximum reliability.
 
@@ -172,17 +181,62 @@ The bot converts weather conditions to emoji for better readability:
 - ⛈ Thunderstorms
 - � Hazy / Mist
 
+## Logging
+
+The bot features a professional logging system designed for production deployment:
+
+### Log Files
+- **Location**: `logs/weather_bot.log`
+- **Rotation**: Automatically rotates when logs exceed 10MB (keeps 5 files)
+- **Format**: `YYYY-MM-DD HH:MM:SS | LEVEL | COMPONENT | MESSAGE`
+
+### Viewing Logs
+```bash
+# View recent logs
+python view_logs.py
+
+# View last 20 lines
+python view_logs.py --lines 20
+
+# Filter by component
+python view_logs.py --component telegram
+python view_logs.py --component met-api
+
+# Filter by level
+python view_logs.py --level ERROR
+
+# Follow logs in real-time (like tail -f)
+python view_logs.py --follow
+```
+
+### Log Components
+- **main**: Application startup, mode selection, and completion
+- **met-api**: MET Malaysia API requests and responses
+- **weather-api**: WeatherAPI.com requests and responses  
+- **openweather**: OpenWeatherMap fallback API activity
+- **telegram**: Telegram message delivery status
+
+### Example Log Output
+```
+2025-09-25 08:15:00 | INFO  | main        | Starting daily mode (coordinates: 2.8389, 101.6957)
+2025-09-25 08:15:00 | INFO  | met-api     | MET Malaysia API request successful (200)
+2025-09-25 08:15:00 | INFO  | met-api     | Using location: Sepang (Ds064)
+2025-09-25 08:15:01 | INFO  | telegram    | Message sent successfully
+2025-09-25 08:15:01 | INFO  | main        | Daily report completed successfully
+```
+
 ## Troubleshooting
 
 ### No notifications received
 - Verify your bot token and chat ID are correct
 - Check if the bot has permission to send messages to your chat
 - Ensure your location coordinates are valid
-- Run the script manually to check for errors
+- **Check logs**: `python view_logs.py --component telegram` to see message delivery status
 - Verify API keys for all three services
 
 ### API errors
 - The bot will automatically fall back to OpenWeatherMap if primary APIs fail
+- **Check logs**: `python view_logs.py --level ERROR` to see API error details
 - Check if you've exceeded any API rate limits
 - Ensure you have an active internet connection
 - Verify all API keys are valid and active
@@ -191,6 +245,19 @@ The bot converts weather conditions to emoji for better readability:
 - MET Malaysia API filters specifically for "Sepang" in location names
 - Coordinates should be precise for best results
 - The bot prioritizes District (Ds) locations over Town (Tn) locations
+- **Check logs**: `python view_logs.py --component met-api` to see location selection
+
+### Debugging with logs
+```bash
+# Check recent activity
+python view_logs.py --lines 20
+
+# Monitor real-time execution
+python view_logs.py --follow
+
+# Check for errors only
+python view_logs.py --level ERROR
+```
 
 ## Contributing
 

@@ -1,20 +1,32 @@
 # Weather Alert Telegram Bot
 
-A Python bot that monitors weather forecasts and sends Telegram notifications when rain is expected in your area.
+A Python bot that monitors weather forecasts and sends Telegram notifications when rain is expected in your area. Features a hybrid architecture with multiple weather APIs and intelligent fallbacks for maximum reliability.
 
 ## Features
 
-- 🌧️ Monitors weather forecasts for the next 48 hours
-- 📱 Sends automated Telegram notifications when rain is predicted
-- 🕐 Displays rain predictions with time and weather emoji
-- 🌍 Configurable location coordinates
-- ⏰ Designed to run periodically (e.g., via cron job)
+- �️ **Dual Mode Operation**: Daily reports and 30-minute alerts
+- 🌧️ **Hybrid API Architecture**: Uses multiple weather services for optimal accuracy
+- 📱 **Smart Telegram Notifications**: Markdown-formatted messages with weather emojis
+- 🇲🇾 **Malaysia-Optimized**: Official MET Malaysia data for local accuracy
+- 🔄 **Automatic Fallbacks**: OpenWeatherMap backup when primary APIs fail
+- 📍 **Location-Specific**: Precisely targeted for Sepang/Salak Tinggi area
+- ⏰ **Cron-Ready**: Designed for automated scheduling
+
+## Architecture
+
+### Primary APIs
+- **Daily Mode**: MET Malaysia Government API (official meteorological data)
+- **Alert Mode**: WeatherAPI.com (real-time 30-minute forecasts)
+
+### Fallback API
+- **OpenWeatherMap**: Automatic backup for both modes when primary APIs fail
 
 ## Prerequisites
 
 - Python 3.7 or higher
 - Telegram Bot Token (from [@BotFather](https://t.me/botfather))
-- OpenWeatherMap API Key (free tier available at [openweathermap.org](https://openweathermap.org/api))
+- WeatherAPI.com API Key (free tier at [weatherapi.com](https://www.weatherapi.com/))
+- OpenWeatherMap API Key (free tier at [openweathermap.org](https://openweathermap.org/api))
 - Telegram Chat ID (where notifications will be sent)
 
 ## Installation
@@ -38,9 +50,10 @@ pip install -r requirements.txt
 
 4. Create a `.env` file in the project root:
 ```env
-OPENWEATHER_API_KEY=your_openweather_api_key
 TELEGRAM_TOKEN=your_telegram_bot_token
 CHAT_ID=your_telegram_chat_id
+WEATHERAPI_KEY=your_weatherapi_key
+OPENWEATHER_API_KEY=your_openweather_api_key
 LAT=your_latitude
 LON=your_longitude
 ```
@@ -58,6 +71,11 @@ LON=your_longitude
 3. Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
 4. Find your chat ID in the response
 
+### Getting WeatherAPI.com API Key
+1. Sign up at [weatherapi.com](https://www.weatherapi.com/)
+2. Navigate to your API keys section
+3. Copy your API key
+
 ### Getting OpenWeatherMap API Key
 1. Sign up at [openweathermap.org](https://openweathermap.org/api)
 2. Navigate to your API keys section
@@ -70,55 +88,89 @@ LON=your_longitude
 
 ## Usage
 
-### Manual Run
+### Daily Report Mode (Default)
 ```bash
+python main.py --mode daily
+# or simply
 python main.py
 ```
 
-### Automated Scheduling with Cron
-To run the bot automatically every morning at 6 AM:
-
-1. Open your crontab:
+### 30-Minute Alert Mode
 ```bash
-crontab -e
+python main.py --mode alert
 ```
 
-2. Add this line:
+### Automated Scheduling with Cron
+
+**Daily Reports (7 AM)**
 ```bash
-0 6 * * * cd /path/to/weather_alert_telegram_bot && /path/to/.venv/bin/python main.py
+0 7 * * * cd /path/to/weather_alert_telegram_bot && /path/to/.venv/bin/python main.py --mode daily
+```
+
+**30-Minute Rain Alerts (Work Hours)**
+```bash
+*/30 8-18 * * 1-5 cd /path/to/weather_alert_telegram_bot && /path/to/.venv/bin/python main.py --mode alert
 ```
 
 ### Example Output
-When rain is detected, you'll receive a Telegram message like:
+
+**Daily Report:**
 ```
-🌧️ Rain Alert! 🌧️
+☔ Daily Rain Report
 
-📅 Today (Monday)
-• 09:00 AM - 🌧️ Light rain
-• 12:00 PM - 🌧️ Light rain
-• 03:00 PM - 🌦️ Light rain
+*Today* *(2025-09-25)*
+Expected rain at:
+  • 5 AM - Scattered rain 🌦
+  • 2 PM - Light rain 🌧
 
-📅 Tomorrow (Tuesday)
-• 06:00 AM - 🌧️ Moderate rain
+*Tomorrow* *(2025-09-26)*
+No rain predicted
+```
+
+**Rain Alert:**
+```
+🚨 Immediate Rain Alert!
+Rain expected in the next 30 minutes | Light rain (75%) 🌧
 ```
 
 ## How It Works
 
-1. The bot fetches a 5-day weather forecast from OpenWeatherMap API
-2. Filters the forecast for the next 48 hours
-3. Checks for any rain predictions
-4. If rain is found, formats a message with times and weather conditions
-5. Sends the notification to your Telegram chat
+### Daily Mode
+1. Queries MET Malaysia government API for official forecast data
+2. Filters specifically for Sepang area (District prioritized over Town)  
+3. Checks today and tomorrow for rain predictions
+4. Falls back to OpenWeatherMap if MET Malaysia is unavailable
+5. Sends formatted report with time periods and weather conditions
+
+### Alert Mode  
+1. Uses WeatherAPI.com for real-time hourly forecasts
+2. Analyzes next 30 minutes for immediate rain probability
+3. Falls back to OpenWeatherMap current conditions if primary API fails
+4. Sends immediate alerts only when rain is imminent
+
+### Fallback System
+- **Automatic Detection**: APIs failures are automatically detected
+- **Seamless Switching**: Falls back to OpenWeatherMap without user intervention  
+- **Clear Labeling**: Fallback messages are clearly marked in notifications
+- **Comprehensive Coverage**: Both modes have fallback protection
+
+## API Sources
+
+| Mode | Primary API | Fallback API | Accuracy |
+|------|-------------|--------------|----------|
+| Daily | MET Malaysia | OpenWeatherMap | Government-grade |
+| Alert | WeatherAPI.com | OpenWeatherMap | Real-time precision |
 
 ## Weather Icons
 
 The bot converts weather conditions to emoji for better readability:
-- ☀️ Clear sky
+- ☀️ Clear sky / No rain
+- ⛅ Partly cloudy  
 - ☁️ Cloudy
-- 🌧️ Rain
-- 🌩️ Thunderstorm
-- 🌨️ Snow
-- 🌫️ Mist/Fog
+- 🌦 Scattered rain
+- 🌧 Rain / Light rain
+- ⛈ Thunderstorms
+- � Hazy / Mist
 
 ## Troubleshooting
 
@@ -127,11 +179,18 @@ The bot converts weather conditions to emoji for better readability:
 - Check if the bot has permission to send messages to your chat
 - Ensure your location coordinates are valid
 - Run the script manually to check for errors
+- Verify API keys for all three services
 
 ### API errors
-- Verify your OpenWeatherMap API key is valid
-- Check if you've exceeded the API rate limit
+- The bot will automatically fall back to OpenWeatherMap if primary APIs fail
+- Check if you've exceeded any API rate limits
 - Ensure you have an active internet connection
+- Verify all API keys are valid and active
+
+### Location issues
+- MET Malaysia API filters specifically for "Sepang" in location names
+- Coordinates should be precise for best results
+- The bot prioritizes District (Ds) locations over Town (Tn) locations
 
 ## Contributing
 
